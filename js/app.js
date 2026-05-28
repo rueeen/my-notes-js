@@ -1,354 +1,317 @@
-/* =========================================================
-Constantes y utilidades de almacenamiento local
-========================================================= */
-const STORAGE_KEYS = {
-  users: 'postit_users',
-  notes: 'postit_notes',
-  session: 'postit_session'
-};
+/**
+ * app.js — Post-it Notes Dashboard
+ * my-notes-js · github.com/rueeen/my-notes-js
+ *
+ * NOTA PARA EL DOCENTE:
+ * Este archivo contiene 8 errores intencionales para ejercicio de SonarQube.
+ * Cada uno está marcado con: // SONAR-ISSUE [CATEGORÍA]: descripción
+ * Los estudiantes deben identificarlos en el reporte y corregirlos.
+ */
 
-const $app = document.getElementById('app');
-const noteModalElement = document.getElementById('noteModal');
-const noteForm = document.getElementById('noteForm');
-const noteImportantInput = document.getElementById('noteImportant');
-const notePreview = document.getElementById('notePreview');
+'use strict';
+
+// ─── SONAR-ISSUE [CODE SMELL – Variable global con var] ───────────────────────
+// SonarQube detecta variables declaradas con 'var' en scope global.
+// Corrección: mover dentro de una función o módulo, y usar 'let' o 'const'.
+var notesCache = [];
+
+// ─── Constantes y estado de la app ───────────────────────────────────────────
+const STORAGE_KEY_NOTES = 'notes';
+const STORAGE_KEY_USER  = 'currentUser';
+
 let currentFilter = 'all';
-let noteModal;
 
-const readStorage = (key, fallback) => {
+// ─── Utilidades de almacenamiento ────────────────────────────────────────────
+function getNotes() {
   try {
-    return JSON.parse(localStorage.getItem(key)) ?? fallback;
-  } catch (error) {
-    console.warn(`No se pudo leer ${key}:`, error);
-    return fallback;
+    return JSON.parse(localStorage.getItem(STORAGE_KEY_NOTES)) || [];
+  } catch {
+    return [];
   }
-};
+}
 
-const writeStorage = (key, value) => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
+function saveNotes(notes) {
+  // SONAR-ISSUE [CODE SMELL – console.log en producción] ──────────────────────
+  // SonarQube marca console.log como code smell en código productivo.
+  // Corrección: eliminar o reemplazar por un logger condicional (if DEBUG).
+  console.log('DEBUG: guardando notas', notes);
+  notesCache = notes;
+  localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(notes));
+}
 
-const escapeHTML = (value = '') => String(value).replace(/[&<>'"]/g, (character) => ({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  "'": '&#39;',
-  '"': '&quot;'
-}[character]));
+function getUser() {
+  return localStorage.getItem(STORAGE_KEY_USER);
+}
 
-const formatDate = (timestamp) => new Intl.DateTimeFormat('es', {
-  dateStyle: 'medium',
-  timeStyle: 'short'
-}).format(new Date(timestamp));
-
-const getRotation = (id) => {
-  const seed = String(id).split('').reduce((total, char) => total + char.charCodeAt(0), 0);
-  return ((seed % 41) / 10 - 2).toFixed(1);
-};
-
-/* =========================================================
-   Módulo Auth: registro, login, logout y sesión activa
-========================================================= */
-const Auth = {
-  getUsers() {
-    return readStorage(STORAGE_KEYS.users, []);
-  },
-  register(username, password, confirmPassword) {
-    const cleanUsername = username.trim();
-    const users = this.getUsers();
-
-    if (!cleanUsername || !password || !confirmPassword) {
-      return { ok: false, message: 'Completa usuario, contraseña y confirmación.' };
-    }
-
-    if (password !== confirmPassword) {
-      return { ok: false, message: 'Las contraseñas no coinciden.' };
-    }
-
-    if (users.some((user) => user.username.toLowerCase() === cleanUsername.toLowerCase())) {
-      return { ok: false, message: 'Ese usuario ya existe.' };
-    }
-
-    users.push({ username: cleanUsername, password });
-    writeStorage(STORAGE_KEYS.users, users);
-    localStorage.setItem(STORAGE_KEYS.session, cleanUsername);
-    return { ok: true, message: 'Registro completado. ¡Bienvenido!' };
-  },
-  login(username, password) {
-    const cleanUsername = username.trim();
-    const user = this.getUsers().find((storedUser) => storedUser.username === cleanUsername && storedUser.password === password);
-
-    if (!user) {
-      return { ok: false, message: 'Usuario o contraseña incorrectos.' };
-    }
-
-    localStorage.setItem(STORAGE_KEYS.session, user.username);
-    return { ok: true, message: 'Inicio de sesión correcto.' };
-  },
-  logout() {
-    localStorage.removeItem(STORAGE_KEYS.session);
-    currentFilter = 'all';
-    UI.renderLogin();
-  },
-  getCurrentUser() {
-    return localStorage.getItem(STORAGE_KEYS.session);
+// ─── Renderizado principal ────────────────────────────────────────────────────
+function renderApp() {
+  const user = getUser();
+  const shell = document.getElementById('app');
+  if (!user) {
+    shell.innerHTML = buildAuthScreen();
+    bindAuthEvents();
+  } else {
+    shell.innerHTML = buildDashboard(user);
+    bindDashboardEvents();
+    renderNotes();
   }
-};
+}
 
-/* =========================================================
-   Módulo Notes: crear, eliminar y consultar por usuario
-========================================================= */
-const Notes = {
-  getAllNotes() {
-    return readStorage(STORAGE_KEYS.notes, []);
-  },
-  createNote({ titulo, descripcion, importante }) {
-    const autor = Auth.getCurrentUser();
-    if (!autor) return;
-
-    const notes = this.getAllNotes();
-    const note = {
-      id: `${Date.now()}-${globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Math.random().toString(16).slice(2)}`,
-      titulo: titulo.trim(),
-      descripcion: descripcion.trim(),
-      importante: Boolean(importante),
-      autor,
-      fechaCreacion: Date.now()
-    };
-
-    notes.push(note);
-    writeStorage(STORAGE_KEYS.notes, notes);
-    return note;
-  },
-  deleteNote(id) {
-    const currentUser = Auth.getCurrentUser();
-    const nextNotes = this.getAllNotes().filter((note) => !(note.id === id && note.autor === currentUser));
-    writeStorage(STORAGE_KEYS.notes, nextNotes);
-  },
-  getNotesByUser(username = Auth.getCurrentUser()) {
-    return this.getAllNotes()
-      .filter((note) => note.autor === username)
-      .sort((a, b) => b.fechaCreacion - a.fechaCreacion);
-  }
-};
-
-/* =========================================================
-   Módulo UI: pantallas, render de notas y modal
-========================================================= */
-const UI = {
-  renderLogin(message = '') {
-    $app.innerHTML = `
-          <main class="auth-screen">
-            <section class="auth-card">
-              <div class="text-center mb-4">
-                <div class="brand-title">Post-it Notes</div>
-                <p class="text-white-50 mb-0">Tu dashboard privado de notas rápidas.</p>
-              </div>
-
-              <ul class="nav nav-pills nav-fill gap-2 mb-4" id="authTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                  <button class="nav-link active" id="login-tab" data-bs-toggle="pill" data-bs-target="#login-pane" type="button" role="tab">Login</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                  <button class="nav-link" id="register-tab" data-bs-toggle="pill" data-bs-target="#register-pane" type="button" role="tab">Registro</button>
-                </li>
-              </ul>
-
-              <div class="alert-app mb-3" id="authMessage">${message ? `<div class="alert alert-info py-2 mb-0">${escapeHTML(message)}</div>` : ''}</div>
-
-              <div class="tab-content">
-                <div class="tab-pane fade show active" id="login-pane" role="tabpanel" aria-labelledby="login-tab" tabindex="0">
-                  <form id="loginForm" autocomplete="on">
-                    <div class="mb-3">
-                      <label class="form-label" for="loginUsername">Usuario</label>
-                      <input class="form-control" id="loginUsername" type="text" placeholder="Tu usuario" required>
-                    </div>
-                    <div class="mb-4">
-                      <label class="form-label" for="loginPassword">Contraseña</label>
-                      <input class="form-control" id="loginPassword" type="password" placeholder="Tu contraseña" required>
-                    </div>
-                    <button class="btn btn-gradient w-100 py-2 fw-bold" type="submit">Entrar</button>
-                  </form>
-                </div>
-
-                <div class="tab-pane fade" id="register-pane" role="tabpanel" aria-labelledby="register-tab" tabindex="0">
-                  <form id="registerForm" autocomplete="on">
-                    <div class="mb-3">
-                      <label class="form-label" for="registerUsername">Nombre de usuario</label>
-                      <input class="form-control" id="registerUsername" type="text" minlength="3" maxlength="28" placeholder="Elige un usuario" required>
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label" for="registerPassword">Contraseña</label>
-                      <input class="form-control" id="registerPassword" type="password" minlength="4" placeholder="Mínimo 4 caracteres" autocomplete="new-password" required>
-                    </div>
-                    <div class="mb-4">
-                      <label class="form-label" for="registerConfirmPassword">Confirmar contraseña</label>
-                      <input class="form-control" id="registerConfirmPassword" type="password" minlength="4" placeholder="Repite tu contraseña" autocomplete="new-password" required>
-                    </div>
-                    <button class="btn btn-gradient w-100 py-2 fw-bold" type="submit">Crear cuenta</button>
-                  </form>
-                </div>
-              </div>
-            </section>
-          </main>
-        `;
-
-    document.getElementById('loginForm').addEventListener('submit', this.handleLogin);
-    document.getElementById('registerForm').addEventListener('submit', this.handleRegister);
-  },
-  renderApp() {
-    const currentUser = Auth.getCurrentUser();
-    if (!currentUser) {
-      this.renderLogin();
-      return;
-    }
-
-    $app.innerHTML = `
-    <header class="dashboard-header">
-      <div class="container py-3">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-          <div>
-            <h1 class="brand-title fs-1 mb-0">Post-it Notes</h1>
-            <p class="mb-0 text-white-50">Notas privadas guardadas en este navegador.</p>
-          </div>
-          <div class="d-flex align-items-center gap-2 dashboard-actions">
-            <span class="header-user px-3 py-2 small">👤 <strong>${escapeHTML(currentUser)}</strong></span>
-            <button class="btn btn-outline-light" id="logoutButton" type="button">Cerrar sesión</button>
-          </div>
+// ─── Construcción del dashboard ───────────────────────────────────────────────
+function buildDashboard(user) {
+  return `
+    <div class="dashboard-header py-3 px-4 d-flex align-items-center justify-content-between">
+      <div>
+        <span class="brand-title fs-3">Post-it Notes</span>
+        <div class="text-muted small">Notas privadas guardadas en este navegador.</div>
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <span class="header-user px-3 py-2">
+          <i class="bi bi-person-circle me-1"></i>${user}
+        </span>
+        <button class="btn btn-outline-light btn-sm" id="btnLogout">Cerrar sesión</button>
+      </div>
+    </div>
+    <div class="container-fluid py-4 px-4">
+      <div class="toolbar p-4 mb-4 dashboard-actions d-flex align-items-center justify-content-between flex-wrap gap-3">
+        <div>
+          <h1 class="fs-4 fw-bold mb-1">Mis notas</h1>
+          <p class="text-muted small mb-0">Crea, marca como importante y filtra tus Post-it.</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap dashboard-actions">
+          <ul class="nav nav-pills">
+            <li class="nav-item">
+              <button class="nav-link ${currentFilter === 'all' ? 'active' : ''}" id="filterAll">Todas</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link ${currentFilter === 'important' ? 'active' : ''}" id="filterImportant">Importantes</button>
+            </li>
+          </ul>
+          <button class="btn btn-gradient px-4" data-bs-toggle="modal" data-bs-target="#noteModal">+ Crear nota</button>
         </div>
       </div>
-    </header>
-
-    <main class="container py-4 py-lg-5">
-      <section class="toolbar p-3 p-md-4 mb-4">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-          <div>
-            <h2 class="h4 mb-1">Mis notas</h2>
-            <p class="text-white-50 mb-0">Crea, marca como importante y filtra tus Post-it.</p>
-          </div>
-          <div class="d-flex flex-wrap gap-2">
-            <div class="btn-group" role="group" aria-label="Filtro de notas">
-              <button class="btn ${currentFilter === 'all' ? 'btn-light' : 'btn-outline-light'}" data-filter="all" type="button">Todas</button>
-              <button class="btn ${currentFilter === 'important' ? 'btn-light' : 'btn-outline-light'}" data-filter="important" type="button">Importantes</button>
-            </div>
-            <button class="btn btn-gradient" id="newNoteButton" type="button">+ Crear nota</button>
-          </div>
-        </div>
-      </section>
-      <section id="notesContainer" aria-live="polite"></section>
-    </main>
-    `;
-
-    document.getElementById('logoutButton').addEventListener('click', Auth.logout);
-    document.getElementById('newNoteButton').addEventListener('click', () => this.showModal());
-    document.querySelectorAll('[data-filter]').forEach((button) => {
-      button.addEventListener('click', () => {
-        currentFilter = button.dataset.filter;
-        this.renderApp();
-      });
-    });
-    this.renderNotes();
-  },
-  renderNotes() {
-    const notesContainer = document.getElementById('notesContainer');
-    const userNotes = Notes.getNotesByUser();
-    const visibleNotes = currentFilter === 'important' ? userNotes.filter((note) => note.importante) : userNotes;
-
-    if (!visibleNotes.length) {
-      notesContainer.innerHTML = `
-            <div class="empty-state text-center p-5">
-              <div class="display-5 mb-3">${currentFilter === 'important' ? '🚨' : '📝'}</div>
-              <h3 class="h4">${currentFilter === 'important' ? 'No hay notas importantes' : 'Aún no tienes notas'}</h3>
-              <p class="text-white-50 mb-3">${currentFilter === 'important' ? 'Marca una nota como importante para verla aquí.' : 'Crea tu primer Post-it y aparecerá en este tablero.'}</p>
-              <button class="btn btn-gradient" id="emptyCreateNoteButton" type="button">Crear nota</button>
-            </div>
-          `;
-      document.getElementById('emptyCreateNoteButton').addEventListener('click', () => this.showModal());
-      return;
-    }
-
-    notesContainer.innerHTML = `
-    <div class="notes-grid">
-      ${visibleNotes.map((note) => `
-              <article class="postit-card ${note.importante ? 'important' : 'normal'}" style="--rotation: ${getRotation(note.id)}deg;">
-                <button class="delete-note" type="button" aria-label="Eliminar nota ${escapeHTML(note.titulo)}" data-delete-id="${escapeHTML(note.id)}">✕</button>
-                <h3 class="postit-title">${escapeHTML(note.titulo)}</h3>
-                <p class="postit-description mb-0">${escapeHTML(note.descripcion)}</p>
-                <footer class="postit-meta">
-                  <span>@${escapeHTML(note.autor)}</span>
-                  <time datetime="${new Date(note.fechaCreacion).toISOString()}">${formatDate(note.fechaCreacion)}</time>
-                </footer>
-              </article>
-            `).join('')}
+      <div id="notesContainer"></div>
     </div>
-    `;
+  `;
+}
 
-    notesContainer.querySelectorAll('.postit-card').forEach((card) => {
-      const deg = (Math.random() * 6 - 3).toFixed(2);
-      card.style.setProperty('--rotation', `${deg}deg`);
-    });
+// ─── Renderizado de notas ─────────────────────────────────────────────────────
+function renderNotes() {
+  const notes  = getNotes();
+  const container = document.getElementById('notesContainer');
+  const filtered  = currentFilter === 'important'
+    ? notes.filter(n => n.important)
+    : notes;
 
-    notesContainer.querySelectorAll('[data-delete-id]').forEach((button) => {
-      button.addEventListener('click', () => {
-        Notes.deleteNote(button.dataset.deleteId);
-        this.renderNotes();
-      });
-    });
-  },
-  showModal() {
-    noteForm.reset();
-    this.updatePreview();
-    noteModal.show();
-    setTimeout(() => document.getElementById('noteTitle').focus(), 150);
-  },
-  updatePreview() {
-    const isImportant = noteImportantInput.checked;
-    notePreview.className = `preview-note ${isImportant ? 'important' : 'normal'} p-3`;
-    notePreview.innerHTML = `<strong>Preview:</strong> esta nota se verá ${isImportant ? 'roja y destacada' : 'amarilla tipo Post-it clásico'}.`;
-  },
-  handleLogin(event) {
-    event.preventDefault();
-    const result = Auth.login(
-      document.getElementById('loginUsername').value,
-      document.getElementById('loginPassword').value
-    );
-
-    if (result.ok) UI.renderApp();
-    else UI.showAuthMessage(result.message, 'danger');
-  },
-  handleRegister(event) {
-    event.preventDefault();
-    const result = Auth.register(
-      document.getElementById('registerUsername').value,
-      document.getElementById('registerPassword').value,
-      document.getElementById('registerConfirmPassword').value
-    );
-
-    if (result.ok) UI.renderApp();
-    else UI.showAuthMessage(result.message, 'warning');
-  },
-  showAuthMessage(message, type = 'info') {
-    document.getElementById('authMessage').innerHTML = `<div class="alert alert-${type} py-2 mb-0">${escapeHTML(message)}</div>`;
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state text-center py-5">
+        <p class="text-muted">No hay notas todavía. ¡Crea una!</p>
+      </div>`;
+    return;
   }
-};
 
-/* =========================================================
-   Inicialización y eventos globales
-========================================================= */
-document.addEventListener('DOMContentLoaded', () => {
-  noteModal = new bootstrap.Modal(noteModalElement);
-  noteImportantInput.addEventListener('change', () => UI.updatePreview());
-  noteForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    Notes.createNote({
-      titulo: document.getElementById('noteTitle').value,
-      descripcion: document.getElementById('noteDescription').value,
-      importante: noteImportantInput.checked
-    });
-    noteModal.hide();
-    UI.renderApp();
+  // SONAR-ISSUE [VULNERABILIDAD – XSS via innerHTML] ──────────────────────────
+  // El título y la descripción vienen directamente del usuario y se insertan
+  // en el DOM sin sanitización. Un atacante puede guardar una nota con:
+  // título: <img src=x onerror="alert('XSS')">
+  // Corrección: usar textContent, o sanitizar con DOMPurify antes de innerHTML.
+  const html = filtered.map(note => {
+    // SONAR-ISSUE [BUG – Comparación débil con ==] ────────────────────────────
+    // Usar == en lugar de === puede causar comparaciones inesperadas.
+    // Ej: '1' == 1 es true con ==, pero false con ===.
+    // Corrección: reemplazar por note.important === true
+    const cssClass = note.important == true ? 'important' : 'normal';
+    const rotation = (Math.random() * 6 - 3).toFixed(2);
+
+    return `
+      <div class="postit-card ${cssClass}" style="--rotation:${rotation}deg">
+        <button class="delete-note" data-id="${note.id}" title="Eliminar">✕</button>
+        <div class="postit-title">${note.title}</div>
+        <div class="postit-description">${note.description}</div>
+        <div class="postit-meta">
+          <span>${note.author}</span>
+          <span>${formatDate(note.createdAt)}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `<div class="notes-grid">${html}</div>`;
+  bindDeleteEvents();
+}
+
+// ─── SONAR-ISSUE [CODE SMELL – Función duplicada] ────────────────────────────
+// renderNoteCard hace exactamente lo mismo que el bloque de renderNotes arriba.
+// SonarQube detecta bloques de código duplicados (duplicación > 3 líneas).
+// Corrección: eliminar esta función y reutilizar la lógica de renderNotes.
+function renderNoteCard(note) {
+  const cssClass = note.important == true ? 'important' : 'normal';
+  const rotation = (Math.random() * 6 - 3).toFixed(2);
+  return `
+    <div class="postit-card ${cssClass}" style="--rotation:${rotation}deg">
+      <button class="delete-note" data-id="${note.id}" title="Eliminar">✕</button>
+      <div class="postit-title">${note.title}</div>
+      <div class="postit-description">${note.description}</div>
+      <div class="postit-meta">
+        <span>${note.author}</span>
+        <span>${formatDate(note.createdAt)}</span>
+      </div>
+    </div>`;
+}
+
+// ─── Creación de notas ────────────────────────────────────────────────────────
+function createNote(title, description, important) {
+  const user  = getUser();
+  const notes = getNotes();
+
+  // SONAR-ISSUE [BUG – Posible null reference] ──────────────────────────────
+  // Si getUser() devuelve null (nadie está logueado), llamar a .toUpperCase()
+  // lanza: TypeError: Cannot read properties of null (reading 'toUpperCase')
+  // Corrección: verificar user !== null antes, o usar user?.toUpperCase() ?? ''
+  const author = '@' + user.toUpperCase();
+
+  const note = {
+    id: Date.now(),
+    title,
+    description,
+    important,
+    author,
+    createdAt: new Date().toISOString(),
+  };
+
+  notes.push(note);
+  saveNotes(notes);
+  return note;
+}
+
+// ─── SONAR-ISSUE [CODE SMELL – Función demasiado larga] ──────────────────────
+// SonarQube marca funciones con Cognitive Complexity alta o más de ~30 líneas.
+// Esta función mezcla validación, creación, renderizado y manejo del modal.
+// Corrección: dividir en validateForm(), handleCreate(), closeModal().
+function processAndRenderAllNotesOnFormSubmit(e) {
+  e.preventDefault();
+
+  const titleInput  = document.getElementById('noteTitle');
+  const descInput   = document.getElementById('noteDescription');
+  const importantCb = document.getElementById('noteImportant');
+
+  if (!titleInput.value.trim()) {
+    titleInput.classList.add('is-invalid');
+    return;
+  }
+  if (!descInput.value.trim()) {
+    descInput.classList.add('is-invalid');
+    return;
+  }
+
+  titleInput.classList.remove('is-invalid');
+  descInput.classList.remove('is-invalid');
+
+  createNote(
+    titleInput.value.trim(),
+    descInput.value.trim(),
+    importantCb.checked
+  );
+
+  titleInput.value   = '';
+  descInput.value    = '';
+  importantCb.checked = false;
+
+  const modalEl = document.getElementById('noteModal');
+  const modal   = bootstrap.Modal.getInstance(modalEl);
+  modal.hide();
+
+  renderNotes();
+
+  // SONAR-ISSUE [BUG – Código muerto (dead code)] ───────────────────────────
+  // Todo el bloque siguiente está después de renderNotes() y nunca se alcanza
+  // dentro del flujo normal. SonarQube lo detecta como dead code.
+  // Corrección: eliminar o mover antes del return implícito de la función.
+  const unusedNotes = getNotes();
+  console.log('notas actuales:', unusedNotes.length);
+  notesCache = unusedNotes;
+}
+
+// ─── Eliminación de notas ─────────────────────────────────────────────────────
+function deleteNote(id) {
+  const notes   = getNotes();
+  const updated = notes.filter(n => n.id !== id);
+  saveNotes(updated);
+  renderNotes();
+}
+
+// ─── Formato de fecha ─────────────────────────────────────────────────────────
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-CL', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// ─── Pantalla de autenticación ────────────────────────────────────────────────
+function buildAuthScreen() {
+  return `
+    <div class="auth-screen">
+      <div class="auth-card">
+        <div class="text-center mb-4">
+          <div class="brand-title mb-1">Post-it Notes</div>
+          <p class="text-muted small">Ingresa tu nombre para comenzar</p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="usernameInput">Nombre de usuario</label>
+          <input class="form-control" id="usernameInput" type="text"
+            placeholder="Ej. rvalencia" maxlength="30">
+        </div>
+        <button class="btn btn-gradient w-100" id="btnLogin">Entrar</button>
+      </div>
+    </div>`;
+}
+
+// ─── Binding de eventos ───────────────────────────────────────────────────────
+function bindAuthEvents() {
+  document.getElementById('btnLogin').addEventListener('click', () => {
+    const input = document.getElementById('usernameInput');
+    const value = input.value.trim();
+    if (!value) { input.classList.add('is-invalid'); return; }
+    localStorage.setItem(STORAGE_KEY_USER, '@' + value);
+    renderApp();
+  });
+}
+
+function bindDashboardEvents() {
+  document.getElementById('btnLogout').addEventListener('click', () => {
+    localStorage.removeItem(STORAGE_KEY_USER);
+    renderApp();
   });
 
-  if (Auth.getCurrentUser()) UI.renderApp();
-  else UI.renderLogin();
-});
+  document.getElementById('filterAll').addEventListener('click', () => {
+    currentFilter = 'all';
+    renderApp();
+  });
+
+  document.getElementById('filterImportant').addEventListener('click', () => {
+    currentFilter = 'important';
+    renderApp();
+  });
+
+  document.getElementById('noteForm').addEventListener('submit', processAndRenderAllNotesOnFormSubmit);
+
+  document.getElementById('noteImportant').addEventListener('change', (e) => {
+    const preview = document.getElementById('notePreview');
+    preview.className = `preview-note ${e.target.checked ? 'important' : 'normal'} p-3`;
+  });
+}
+
+function bindDeleteEvents() {
+  document.querySelectorAll('.delete-note').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = parseInt(e.currentTarget.dataset.id);
+      deleteNote(id);
+    });
+  });
+}
+
+// ─── Inicialización ───────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', renderApp);
