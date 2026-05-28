@@ -17,7 +17,7 @@ var notesCache = [];
 
 // ─── Constantes y estado de la app ───────────────────────────────────────────
 const STORAGE_KEY_NOTES = 'notes';
-const STORAGE_KEY_USER  = 'currentUser';
+const STORAGE_KEY_USER = 'currentUser';
 
 let currentFilter = 'all';
 
@@ -63,7 +63,7 @@ function buildDashboard(user) {
     <div class="dashboard-header py-3 px-4 d-flex align-items-center justify-content-between">
       <div>
         <span class="brand-title fs-3">Post-it Notes</span>
-        <div class="text-muted small">Notas privadas guardadas en este navegador.</div>
+        <div class="text-white-50 small">Notas privadas guardadas en este navegador.</div>
       </div>
       <div class="d-flex align-items-center gap-3">
         <span class="header-user px-3 py-2">
@@ -76,7 +76,7 @@ function buildDashboard(user) {
       <div class="toolbar p-4 mb-4 dashboard-actions d-flex align-items-center justify-content-between flex-wrap gap-3">
         <div>
           <h1 class="fs-4 fw-bold mb-1">Mis notas</h1>
-          <p class="text-muted small mb-0">Crea, marca como importante y filtra tus Post-it.</p>
+          <p class="text-white-50 small mb-0">Crea, marca como importante y filtra tus Post-it.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap dashboard-actions">
           <ul class="nav nav-pills">
@@ -97,16 +97,16 @@ function buildDashboard(user) {
 
 // ─── Renderizado de notas ─────────────────────────────────────────────────────
 function renderNotes() {
-  const notes  = getNotes();
+  const notes = getNotes();
   const container = document.getElementById('notesContainer');
-  const filtered  = currentFilter === 'important'
+  const filtered = currentFilter === 'important'
     ? notes.filter(n => n.important)
     : notes;
 
   if (filtered.length === 0) {
     container.innerHTML = `
       <div class="empty-state text-center py-5">
-        <p class="text-muted">No hay notas todavía. ¡Crea una!</p>
+        <p class="text-white-50">No hay notas todavía. ¡Crea una!</p>
       </div>`;
     return;
   }
@@ -161,7 +161,7 @@ function renderNoteCard(note) {
 
 // ─── Creación de notas ────────────────────────────────────────────────────────
 function createNote(title, description, important) {
-  const user  = getUser();
+  const user = getUser();
   const notes = getNotes();
 
   // SONAR-ISSUE [BUG – Posible null reference] ──────────────────────────────
@@ -191,8 +191,8 @@ function createNote(title, description, important) {
 function processAndRenderAllNotesOnFormSubmit(e) {
   e.preventDefault();
 
-  const titleInput  = document.getElementById('noteTitle');
-  const descInput   = document.getElementById('noteDescription');
+  const titleInput = document.getElementById('noteTitle');
+  const descInput = document.getElementById('noteDescription');
   const importantCb = document.getElementById('noteImportant');
 
   if (!titleInput.value.trim()) {
@@ -213,12 +213,12 @@ function processAndRenderAllNotesOnFormSubmit(e) {
     importantCb.checked
   );
 
-  titleInput.value   = '';
-  descInput.value    = '';
+  titleInput.value = '';
+  descInput.value = '';
   importantCb.checked = false;
 
   const modalEl = document.getElementById('noteModal');
-  const modal   = bootstrap.Modal.getInstance(modalEl);
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
   modal.hide();
 
   renderNotes();
@@ -234,7 +234,7 @@ function processAndRenderAllNotesOnFormSubmit(e) {
 
 // ─── Eliminación de notas ─────────────────────────────────────────────────────
 function deleteNote(id) {
-  const notes   = getNotes();
+  const notes = getNotes();
   const updated = notes.filter(n => n.id !== id);
   saveNotes(updated);
   renderNotes();
@@ -245,7 +245,7 @@ function formatDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   return d.toLocaleDateString('es-CL', {
-    day: '2-digit', month: 'short', year: 'numeric',
+    day: '2-digit', month: 'short',
     hour: '2-digit', minute: '2-digit',
   });
 }
@@ -257,12 +257,12 @@ function buildAuthScreen() {
       <div class="auth-card">
         <div class="text-center mb-4">
           <div class="brand-title mb-1">Post-it Notes</div>
-          <p class="text-muted small">Ingresa tu nombre para comenzar</p>
+          <p class="text-white-50 small">Ingresa tu nombre para comenzar</p>
         </div>
         <div class="mb-3">
-          <label class="form-label" for="usernameInput">Nombre de usuario</label>
+          <label class="form-label text-white" for="usernameInput">Nombre de usuario</label>
           <input class="form-control" id="usernameInput" type="text"
-            placeholder="Ej. rvalencia" maxlength="30">
+            placeholder="Ej. NombreApellido" maxlength="30">
         </div>
         <button class="btn btn-gradient w-100" id="btnLogin">Entrar</button>
       </div>
@@ -275,7 +275,7 @@ function bindAuthEvents() {
     const input = document.getElementById('usernameInput');
     const value = input.value.trim();
     if (!value) { input.classList.add('is-invalid'); return; }
-    localStorage.setItem(STORAGE_KEY_USER, '@' + value);
+    localStorage.setItem(STORAGE_KEY_USER, value);
     renderApp();
   });
 }
