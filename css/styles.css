@@ -125,22 +125,13 @@ body {
 
 .notes-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(185px, 220px));
+  justify-content: start;
   gap: 1.35rem;
   align-items: start;
 }
 
-@media (max-width: 991px) {
-  .notes-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 640px) {
-  .notes-grid {
-    grid-template-columns: 1fr;
-  }
-
   .auth-card {
     padding: 1.4rem;
   }
@@ -156,7 +147,7 @@ body {
 
 .postit-card {
   position: relative;
-  min-height: 220px;
+  min-height: 170px;
   padding: 2.75rem 1.25rem 1.1rem;
   border: 0;
   border-radius: 0.45rem 0.45rem 1.1rem 0.45rem;
