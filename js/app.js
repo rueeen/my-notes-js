@@ -53,12 +53,16 @@ const Auth = {
   getUsers() {
     return readStorage(STORAGE_KEYS.users, []);
   },
-  register(username, password) {
+  register(username, password, confirmPassword) {
     const cleanUsername = username.trim();
     const users = this.getUsers();
 
-    if (!cleanUsername || !password) {
-      return { ok: false, message: 'Completa usuario y contraseña.' };
+    if (!cleanUsername || !password || !confirmPassword) {
+      return { ok: false, message: 'Completa usuario, contraseña y confirmación.' };
+    }
+
+    if (password !== confirmPassword) {
+      return { ok: false, message: 'Las contraseñas no coinciden.' };
     }
 
     if (users.some((user) => user.username.toLowerCase() === cleanUsername.toLowerCase())) {
@@ -173,9 +177,13 @@ const UI = {
                       <label class="form-label" for="registerUsername">Nombre de usuario</label>
                       <input class="form-control" id="registerUsername" type="text" minlength="3" maxlength="28" placeholder="Elige un usuario" required>
                     </div>
-                    <div class="mb-4">
+                    <div class="mb-3">
                       <label class="form-label" for="registerPassword">Contraseña</label>
-                      <input class="form-control" id="registerPassword" type="password" minlength="4" placeholder="Mínimo 4 caracteres" required>
+                      <input class="form-control" id="registerPassword" type="password" minlength="4" placeholder="Mínimo 4 caracteres" autocomplete="new-password" required>
+                    </div>
+                    <div class="mb-4">
+                      <label class="form-label" for="registerConfirmPassword">Confirmar contraseña</label>
+                      <input class="form-control" id="registerConfirmPassword" type="password" minlength="4" placeholder="Repite tu contraseña" autocomplete="new-password" required>
                     </div>
                     <button class="btn btn-gradient w-100 py-2 fw-bold" type="submit">Crear cuenta</button>
                   </form>
@@ -307,7 +315,8 @@ const UI = {
     event.preventDefault();
     const result = Auth.register(
       document.getElementById('registerUsername').value,
-      document.getElementById('registerPassword').value
+      document.getElementById('registerPassword').value,
+      document.getElementById('registerConfirmPassword').value
     );
 
     if (result.ok) UI.renderApp();
