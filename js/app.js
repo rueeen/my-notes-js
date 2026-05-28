@@ -283,6 +283,11 @@ const UI = {
     </div>
     `;
 
+    notesContainer.querySelectorAll('.postit-card').forEach((card) => {
+      const deg = (Math.random() * 6 - 3).toFixed(2);
+      card.style.setProperty('--rotation', `${deg}deg`);
+    });
+
     notesContainer.querySelectorAll('[data-delete-id]').forEach((button) => {
       button.addEventListener('click', () => {
         Notes.deleteNote(button.dataset.deleteId);
